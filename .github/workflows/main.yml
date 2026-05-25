@@ -1,0 +1,114 @@
+name: CI/CD - Plataforma Educativa
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # -------------------------------------------------------
+      # Paso 1: Descargar el código del repositorio
+      # -------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # -------------------------------------------------------
+      # Paso 2: Configurar Java 21
+      # -------------------------------------------------------
+      - name: Set up JDK 21
+        uses: actions/setup-java@v3
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      # -------------------------------------------------------
+      # Paso 3: Compilar y ejecutar pruebas automáticas
+      # -------------------------------------------------------
+      - name: Build and test with Maven
+        run: mvn clean package -Dspring.profiles.active=test -B
+
+      # -------------------------------------------------------
+      # Paso 4: Autenticar en Docker Hub
+      # -------------------------------------------------------
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # -------------------------------------------------------
+      # Paso 5: Construir imagen Docker
+      # -------------------------------------------------------
+      - name: Build Docker Image
+        run: |
+          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/plataforma-educativa:latest \
+                       -t ${{ secrets.DOCKERHUB_USERNAME }}/plataforma-educativa:${{ github.sha }} .
+
+      # -------------------------------------------------------
+      # Paso 6: Publicar imagen en Docker Hub
+      # -------------------------------------------------------
+      - name: Push Docker Image
+        run: |
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/plataforma-educativa:latest
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/plataforma-educativa:${{ github.sha }}
+
+      # -------------------------------------------------------
+      # Paso 7: Configurar credenciales AWS
+      # -------------------------------------------------------
+      - name: Set up AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+
+      # -------------------------------------------------------
+      # Paso 8: Agregar clave SSH para conectarse a EC2
+      # -------------------------------------------------------
+      - name: Add SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+      # -------------------------------------------------------
+      # Paso 9: Desplegar en EC2 via SSH
+      # -------------------------------------------------------
+      - name: Deploy to EC2
+        run: |
+          ssh -i ~/.ssh/id_rsa \
+              -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null \
+              ${{ secrets.USER_SERVER }}@${{ secrets.EC2_HOST }} << 'EOF'
+            # Autenticar en Docker Hub desde EC2
+            echo ${{ secrets.DOCKERHUB_TOKEN }} | docker login -u ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
+
+            # Descargar la última imagen
+            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/plataforma-educativa:latest
+
+            # Detener y eliminar contenedor anterior si existe
+            docker stop plataforma-educativa || true
+            docker rm plataforma-educativa || true
+
+            # Iniciar nuevo contenedor con variable de BD
+            docker run -d \
+              --name plataforma-educativa \
+              --restart unless-stopped \
+              -p 8080:8080 \
+              -e DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
+              ${{ secrets.DOCKERHUB_USERNAME }}/plataforma-educativa:latest
+
+            # Verificar que levantó
+            sleep 10
+            docker ps | grep plataforma-educativa
+            echo "Despliegue completado exitosamente"
+          EOF
