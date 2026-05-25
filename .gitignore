@@ -1,4 +1,4 @@
-target/
+﻿target/
 *.class
 *.jar
 *.war
@@ -10,16 +10,7 @@ target/
 .project
 .classpath
 .mvn/timing.properties
-!.mvn/wrapper/maven-wrapper.jar
-!.mvn/wrapper/maven-wrapper.properties
-
-# Wallet - NUNCA subir al repositorio
-src/main/resources/wallet/
-
-# Variables de entorno locales
 .env
 *.env
-
-# Logs
 *.log
 logs/
