@@ -92,7 +92,7 @@ jobs:
             # Autenticar en Docker Hub desde EC2
             echo ${{ secrets.DOCKERHUB_TOKEN }} | docker login -u ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
 
-            # Descargar la última imagen
+            # Descargar SIEMPRE la última imagen (forzar refresco)
             docker pull ${{ secrets.DOCKERHUB_USERNAME }}/plataforma-educativa:latest
 
             # Detener y eliminar contenedor anterior si existe
@@ -104,11 +104,22 @@ jobs:
               --name plataforma-educativa \
               --restart unless-stopped \
               -p 8080:8080 \
-              -e DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
+              -e DB_PASSWORD='${{ secrets.DB_PASSWORD }}' \
               ${{ secrets.DOCKERHUB_USERNAME }}/plataforma-educativa:latest
 
-            # Verificar que levantó
-            sleep 10
-            docker ps | grep plataforma-educativa
-            echo "Despliegue completado exitosamente"
+            # Esperar a que Spring Boot termine de arrancar (Oracle ADB suele tardar)
+            echo "Esperando 45s a que la app arranque..."
+            sleep 45
+
+            # Mostrar estado del contenedor
+            docker ps | grep plataforma-educativa || (echo "ERROR: el contenedor no esta corriendo" && docker logs plataforma-educativa --tail 50 && exit 1)
+
+            # Health check
+            if curl -sf http://localhost:8080/api/health > /dev/null; then
+              echo "Despliegue completado exitosamente - app respondiendo en /api/health"
+            else
+              echo "ADVERTENCIA: el contenedor corre pero /api/health no responde. Logs:"
+              docker logs plataforma-educativa --tail 80
+              exit 1
+            fi
           EOF

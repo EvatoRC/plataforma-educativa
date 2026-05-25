@@ -1,16 +1,35 @@
-﻿target/
+# ---------- Maven / build ----------
+target/
 *.class
 *.jar
 *.war
 *.ear
+.mvn/timing.properties
+
+# ---------- IDEs ----------
 .idea/
 *.iml
 .vscode/
 .settings/
 .project
 .classpath
-.mvn/timing.properties
+
+# ---------- Logs y entornos locales ----------
 .env
 *.env
 *.log
 logs/
+hs_err_pid*.log
+
+# ---------- Secretos / credenciales (NO subir nunca) ----------
+# Llaves SSH y certificados sueltos en la raíz del proyecto
+/*.pem
+/*.ppk
+/*.key
+/*.p12
+/*.pfx
+# Archivos de texto con credenciales pegadas
+ip*token*.txt
+*credentials*.txt
+docker-token*.txt
+**/secrets/

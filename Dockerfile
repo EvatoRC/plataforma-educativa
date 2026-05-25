@@ -16,13 +16,8 @@ RUN groupadd -r appgroup && useradd -r -g appgroup appuser
 
 WORKDIR /app
 
+# Copiar wallet completo (cwallet.sso + tnsnames.ora + sqlnet.ora + ojdbc.properties)
 COPY src/main/resources/wallet /app/wallet
-
-# Importar el certificado de Oracle al truststore de Java
-RUN keytool -import -alias oracle-adb \
-    -file /app/wallet/ewallet.pem \
-    -keystore $JAVA_HOME/lib/security/cacerts \
-    -storepass changeit -noprompt || true
 
 COPY --from=buildstage /app/target/plataforma-educativa-1.0.0.jar /app/app.jar
 
@@ -32,12 +27,15 @@ USER appuser
 
 EXPOSE 8080
 
+# IMPORTANTE:
+# - TNS_ADMIN apunta al directorio con cwallet.sso y tnsnames.ora.
+# - oracle.net.wallet_location indica al driver que use el SSO wallet
+#   (cwallet.sso permite acceso sin password, así no dependemos de .jks).
+# - oracle.net.ssl_server_dn_match=true para validar el DN del servidor ADB.
+ENV TNS_ADMIN=/app/wallet
 ENV JAVA_OPTS="-Xms256m -Xmx512m \
-  -Doracle.net.ssl_server_dn_match=false \
+  -Doracle.net.tns_admin=/app/wallet \
   -Doracle.net.wallet_location=/app/wallet \
-  -Djavax.net.ssl.trustStore=/app/wallet/truststore.jks \
-  -Djavax.net.ssl.trustStorePassword=changeit \
-  -Djavax.net.ssl.keyStore=/app/wallet/keystore.jks \
-  -Djavax.net.ssl.keyStorePassword=changeit"
+  -Doracle.net.ssl_server_dn_match=true"
 
 CMD ["sh", "-c", "java $JAVA_OPTS -jar /app/app.jar"]
